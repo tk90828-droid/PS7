@@ -1,4 +1,4 @@
-<!doctype html>   
+<!doctype html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8" />
@@ -690,7 +690,7 @@ function rebuildDatalists(){
   igs.forEach(v=>{ const o=document.createElement('option'); o.value=v; dlI.appendChild(o); });
 }
 
-/* ===== (5) 統計 ===== */
+/* ===== (5) 數量統計 ===== */
 function renderStats(){
   const total = state.rows.length;
   const paid = state.rows.filter(r=> norm(r.pay_status)==='paid').length;
@@ -972,7 +972,7 @@ function renderHiddenBar(){
 }
 $('ovUnhideAll')?.addEventListener('click', ()=>{ hiddenLeaders.clear(); renderOverview(); renderHiddenBar(); });
 
-/* ===== (9) 掃描 QR（改為懸浮視窗＋即時相機） ===== */
+/* ===== (9) 掃描 QR（即時相機 + 不支援時圖片備援） ===== */
 $('btnScan').addEventListener('click', startScan);
 
 async function startScan(){
@@ -1061,7 +1061,7 @@ function handleScanItem(itemStr){
   }
 }
 
-/* ===== (10) 重新整理 & 故障診斷 ===== */
+/* ===== (10) 重新整理 ===== */
 $('btnRefresh').addEventListener('click', ()=> fetchRoster()); // 診斷按鈕暫不運作（已於 HTML 隱藏並 disabled）
 
 /* ===== (11) 已繳費/未繳費清單 ===== */
@@ -1101,7 +1101,7 @@ function openListModal(kind){
     listTitle.textContent = `未繳費名單 / Unpaid List（${rows.length}）`;
     listBody.innerHTML = buildUnpaidTable(rows);
   }
-  applyListWidths(); 
+  applyListWidths();
   initListSliders();        /* ⬅ 新增：開窗後初始化滑桿 */
   listBackdrop.style.display='flex';
 }
