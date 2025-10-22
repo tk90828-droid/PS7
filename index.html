@@ -379,6 +379,24 @@ button.primary:hover{filter:saturate(1.08);}
   cursor:pointer; line-height:1; font-size:20px; font-weight:900;
 }
 .modal-close:hover, .note-close:hover{ filter:brightness(1.1); border:none; }
+
+/* === QR Scanner Modal & Crosshair === */
+.scan-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:none;z-index:9999;}
+.scan-modal{position:absolute;inset:0;display:grid;place-items:center;padding:20px;}
+.scan-card{position:relative;width:min(680px,94vw);aspect-ratio:3/4;border-radius:16px;background:var(--card);border:1px solid var(--border);
+  box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.03);overflow:hidden;}
+.scan-header{position:absolute;top:8px;left:8px;right:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;z-index:2}
+.scan-title{font-weight:600;color:var(--fg);font-size:14px;opacity:.9}
+.scan-close{appearance:none;border:1px solid var(--border);background:#0f1117;color:var(--fg);padding:8px 10px;border-radius:10px;cursor:pointer}
+.scan-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.scan-overlay{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.scan-mask{position:relative;width:80%;max-width:480px;aspect-ratio:1/1;border-radius:18px;outline:2px dashed rgba(255,255,255,.25);
+  box-shadow:inset 0 0 0 2px rgba(255,255,255,.15);}
+.scan-cross:before,.scan-cross:after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#fff;opacity:.9}
+.scan-cross:before{width:60%;height:2px}
+.scan-cross:after{width:2px;height:60%}
+.scan-hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;color:var(--muted);font-size:13px}
+
 </style>
 </head>
 <body>
@@ -955,8 +973,84 @@ function renderHiddenBar(){
 $('ovUnhideAll')?.addEventListener('click', ()=>{ hiddenLeaders.clear(); renderOverview(); renderHiddenBar(); });
 
 /* ===== (9) 掃描 QR ===== */
+
 $('btnScan').addEventListener('click', startScan);
+let __scanStream = null;
+let __scanLoopAlive = false;
+
 async function startScan(){
+  const supported = ('BarcodeDetector' in window);
+  if(supported){
+    try{
+      // 開啟掃描 UI
+      const backdrop = $('scanBackdrop');
+      const video = $('scanVideo');
+      backdrop.style.display = 'block';
+      $('scanClose').onclick = async () => { await stopScanUI(); };
+
+      const detector = new window.BarcodeDetector({ formats:['qr_code'] });
+      __scanStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
+      video.srcObject = __scanStream;
+      await video.play();
+      __scanLoopAlive = true;
+
+      const tick = async ()=>{
+        if(!__scanLoopAlive) return;
+        if(video.readyState >= 2){
+          try{
+            const bmp = await createImageBitmap(video);
+            const codes = await detector.detect(bmp);
+            bmp.close();
+            if(codes && codes.length){
+              const item = (codes[0].rawValue||'').trim();
+              await stopScanUI();
+              handleScanItem(item);
+              return;
+            }
+          }catch(e){ /* ignore frame errors */ }
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+      showToast('請將 QR 對準框線 · Align QR in box');
+      return;
+    }catch(e){
+      console.warn('Video scanner failed, fallback to file', e);
+      await stopScanUI();
+      // fallback below
+    }
+  }
+  // Fallback: 檔案選取 + 本地解析（沿用原本流程）
+  const input = $('hiddenFile') || (function(){
+    const el = document.createElement('input'); el.type='file'; el.accept='image/*'; el.id='hiddenFile'; el.style.display='none';
+    document.body.appendChild(el); return el;
+  })();
+  input.onchange = async (ev)=>{
+    try{
+      const f = (ev.target.files||[])[0];
+      if(!f){ showToast('未選取圖片 / No image selected'); return; }
+      const bmp = await createImageBitmap(f);
+      const detector = new window.BarcodeDetector({ formats:['qr_code'] });
+      const codes = await detector.detect(bmp); bmp.close();
+      if(codes && codes.length){ handleScanItem((codes[0].rawValue||'').trim()); }
+      else{ showToast('解析失敗，請改用手動查找 / Parse failed, use manual search'); }
+    }catch(err){ console.warn(err); showToast('讀取失敗 · 請改用手動查找'); }
+    finally{ input.value=''; }
+  };
+  input.click();
+}
+
+async function stopScanUI(){
+  try{ __scanLoopAlive = false; }catch(_){}
+  try{
+    const backdrop = $('scanBackdrop');
+    if(backdrop) backdrop.style.display = 'none';
+  }catch(_){}
+  try{
+    if(__scanStream){ __scanStream.getTracks().forEach(t=>t.stop()); }
+  }catch(_){}
+  __scanStream = null;
+}
   const supported = ('BarcodeDetector' in window);
   if(supported){
     try{
@@ -999,26 +1093,33 @@ async function startScan(){
   input.click();
 }
 async function stopStream(stream){ try{ stream.getTracks().forEach(t=>t.stop()); }catch(_){ } }
+
 function handleScanItem(itemStr){
   if(!itemStr){ showToast('QR 無內容 / Empty QR'); return; }
   const row = state.indexByItem.get(String(itemStr));
   if(!row){ showToast('查無此 ITEM · 請確認 / Item not found'); return; }
-  // ★ 需求變更：若該筆有 link，直接開啟付款頁面；否則沿用原本的付款彈窗
   const link = (row.link||'').toString().trim();
   if(link){
-    // 儘量使用原字串；若未含協定且像是網域，嘗試補上 https://
     const hasProtocol = /^https?:\/\//i.test(link);
     const target = hasProtocol ? link : (link.startsWith('/') ? link : ('https://' + link));
-    try{
-      window.location.assign(target);
-      return;
-    }catch(_){
-      // 若導向失敗，退回彈窗
-      console.warn('link 導向失敗，改用彈窗', _);
-    }
+    try{ window.location.assign(target); return; }catch(_){ console.warn('link 導向失敗，改用彈窗', _); }
   }
   openPayModal(row);
 }
+
+  const row = state.indexByItem.get(String(itemStr));
+  if(!row){ showToast('查無此 ITEM · 請確認 / Item not found'); return; }
+  openPayModal(row);
+}
+
+
+// Enable ESC to close scanner UI
+document.addEventListener('keydown', async (e)=>{
+  if(e.key === 'Escape'){
+    const b = $('scanBackdrop');
+    if(b && b.style.display==='block'){ await stopScanUI(); }
+  }
+});
 
 /* ===== (10) 重新整理 & 故障診斷 ===== */
 $('btnRefresh').addEventListener('click', ()=> fetchRoster()); // 診斷按鈕暫不運作（已於 HTML 隱藏並 disabled）
