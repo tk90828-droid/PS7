@@ -727,7 +727,7 @@ function renderOnlyMatches(rows){
   const grid = $('grid'); grid.innerHTML = '';
   if(!rows || !rows.length){ headMsg('查無資料 / No results', false); return; }
   headMsg(`符合 ${rows.length} 筆 / matched records`, false);
-  rows.slice().sort((a,b)=> (a.country||'').localeCompare(b.country||'') || (a.name||'').localeCompare(b.name||''))
+  rows.slice().sort((a,b)=> (a.country||'').localeCompare(b.country||'') || (a.name||'').localeCompare(b.name||'')))
     .forEach(r=> grid.appendChild(renderPerson(r)));
 }
 
@@ -1048,17 +1048,13 @@ $('qrFile').addEventListener('change', async (e)=>{
   } finally { e.target.value=''; }
 });
 
-/* 掃到數字 → 以 item 比對；有 link 直接開付款頁，否則退回原本付款彈窗 */
+/* 掃到數字 → 以 item 比對；★一律打開付款彈窗（不再依 link 開頁） */
 function handleScanItem(itemStr){
   if(!itemStr){ showToast('QR 無內容 / Empty QR'); return; }
   const row = state.indexByItem.get(String(itemStr));
   if(!row){ showToast('查無此 ITEM · 請確認 / Item not found'); return; }
-  if(row.link){
-    try{ window.open(row.link, '_blank'); }
-    catch(_){ location.href = row.link; }
-  }else{
-    openPayModal(row);
-  }
+  // 需求：掃描到後直接進付款彈窗（未付款 / 已付款 + 送出）
+  openPayModal(row);
 }
 
 /* ===== (10) 重新整理 ===== */
