@@ -678,7 +678,7 @@ button.primary:hover{filter:saturate(1.08);}
 </div>
 
 <!-- 隱藏的檔案 input 供「QR 圖片備援」 -->
-<input id="qrFile" type="file" accept="image/*" style="display:none" />
+<input id="qrFile" type="file" accept="image/*" capture="environment" style="display:none" />
 
 <!-- Toast -->
 <div id="toast" class="toast"></div>
@@ -1062,30 +1062,49 @@ const scan = {
 
 async function startScan(){
   openScanModal();
-  if(!('BarcodeDetector' in window)){
-    showToast('裝置不支援即時解析，改用圖片辨識');
+
+  // ① 先請求相機（確保 iPhone 會跳權限）
+  try{
+    scan.stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:'environment' },
+      audio:false
+    });
+  }catch(e){
+    console.warn('getUserMedia 失敗', e);
+    if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) {
+      showToast('無法使用相機，請在 Safari 的網站設定允許相機');
+    } else if (e && e.name === 'NotFoundError') {
+      showToast('未偵測到相機裝置');
+    } else {
+      showToast('相機啟用失敗，改用圖片辨識');
+    }
+    pickImageForScan(); // 退回圖片辨識
+    return;
+  }
+
+  // 顯示相機畫面
+  const video = $('scanVideo');
+  video.srcObject = scan.stream;
+  await video.play();
+
+  // ② 再檢查是否支援 BarcodeDetector
+  if (!('BarcodeDetector' in window)) {
+    showToast('此裝置不支援即時解析，改用圖片辨識');
+    await closeScanModal();
     pickImageForScan();
     return;
   }
   try{
     scan.detector = new window.BarcodeDetector({ formats:['qr_code'] });
   }catch(e){
-    console.warn(e);
+    console.warn('BarcodeDetector 建立失敗', e);
     showToast('裝置不支援即時解析，改用圖片辨識');
+    await closeScanModal();
     pickImageForScan();
     return;
   }
-  try{
-    scan.stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
-  }catch(e){
-    console.warn('getUserMedia 失敗，改用圖片辨識', e);
-    showToast('無法啟用相機，改用圖片辨識');
-    pickImageForScan();
-    return;
-  }
-  const video = $('scanVideo');
-  video.srcObject = scan.stream;
-  await video.play();
+
+  // ③ 進入即時掃描
   scan.running = true;
   loopDetect();
 }
@@ -1101,7 +1120,6 @@ async function loopDetect(){
         bitmap.close();
         if(codes && codes.length){
           const raw = (codes[0].rawValue||'').trim();
-          /* 🔻 唯一修改：掃描成功後，直接關閉懸浮視窗 */
           await closeScanModal();
           handleScanItem(raw);
           return;
