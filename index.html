@@ -1,4 +1,4 @@
-<!doctype html>    
+<!doctype html>     
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8" />
@@ -1101,7 +1101,8 @@ async function loopDetect(){
         bitmap.close();
         if(codes && codes.length){
           const raw = (codes[0].rawValue||'').trim();
-          await stopScan();
+          /* 🔻 唯一修改：掃描成功後，直接關閉懸浮視窗 */
+          await closeScanModal();
           handleScanItem(raw);
           return;
         }
@@ -1522,7 +1523,9 @@ async function saveNotes(){
 window.addEventListener('error', (e)=>{ try{ console.error('[GlobalError]', e.message, e.filename, e.lineno, e.colno, e.error); }catch(_){}
   try{ showToast('發生錯誤：' + (e.message || 'Script error')); }catch(_){} });
 window.addEventListener('unhandledrejection', (e)=>{ try{ console.error('[UnhandledRejection]', e.reason); }catch(_){}
-  try{ showToast('發生錯誤（Promise）：' + (e.reason && e.reason.message ? e.reason.message : '')); }catch(_){} });
+  try{ showToast('發生錯誤（Promise）：' + (e.reason && e.reason.message ? e.reason.message : '')); }catch(_){}
+
+});
 
 /* ===== List/Note 背景點擊收合 ===== */
 listBackdrop.addEventListener('click', (e)=>{ if(e.target===listBackdrop) listBackdrop.style.display='none'; });
