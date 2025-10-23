@@ -1,4 +1,4 @@
-<!doctype html> 
+<!doctype html>    
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8" />
@@ -243,7 +243,7 @@ button.primary:hover{filter:saturate(1.08);}
 /* Save 按鈕（靠右） */
 .nf-save{ margin-left:auto; border:1px solid #2b3244; background:#0f1117; color:#e5e7eb; padding:4px 10px; border-radius:8px; cursor:pointer; font-weight:800; font-size:12px; }
 .nf-save[disabled]{opacity:.6; cursor:not-allowed;}
-.nf-save:hover{ border-image:var(--rainbow) 1; border-width:1; border-style:solid; }
+.nf-save:hover{ border-image:var(--rainbow) 1; border-width:1px; border-style:solid; }
 
 /* 第二行：進階（收合用） */
 .nf-adv{display:none; align-items:center; gap:10px; flex-wrap:wrap}
@@ -379,6 +379,77 @@ button.primary:hover{filter:saturate(1.08);}
   cursor:pointer; line-height:1; font-size:20px; font-weight:900;
 }
 .modal-close:hover, .note-close:hover{ filter:brightness(1.1); border:none; }
+
+/* ================== 🔳 QR 掃描懸浮視窗（新增） ================== */
+#scanBackdrop{display:none; align-items:center; justify-content:center;}
+.scan-modal{
+  width:min(760px,94vw); background:#0f1117; border-radius:16px; border:1px solid #2b3244;
+  box-shadow:0 20px 60px rgba(0,0,0,.55); position:relative; padding:0; overflow:hidden;
+}
+.scan-head{
+  position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:10px;
+  padding:10px 12px; background:#0f1117; border-bottom:1px solid #2b3244;
+}
+.scan-title{font-size:16px; font-weight:800}
+.scan-close{
+  margin-left:auto; width:28px; height:28px; background:transparent; border:none; color:#60a5fa;
+  text-shadow:0 0 8px rgba(96,165,250,.8),0 0 14px rgba(96,165,250,.5); cursor:pointer; font-size:20px; line-height:1;
+}
+.scan-body{ position:relative; aspect-ratio:3/4; background:#000; }
+#scanVideo{ width:100%; height:100%; object-fit:cover; display:block; }
+
+/* 對準框與十字線 */
+.scan-overlay{
+  position:absolute; inset:0; pointer-events:none;
+  display:block;
+}
+.scan-frame{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:min(70vmin, 78%); aspect-ratio:1/1; /* 正方形框 */
+  box-shadow:0 0 0 200vmax rgba(0,0,0,.35); /* 外暗角 */
+  border-radius:18px;
+}
+.scan-corners{
+  position:absolute; inset:0;
+}
+.scan-corners::before,
+.scan-corners::after{
+  content:""; position:absolute; inset:0; border-radius:18px;
+  border:2px solid transparent;
+  /* 用線性漸層只畫四角 */
+  --g: #a7f3d0;
+  background:
+    linear-gradient(90deg,var(--g) 0 10%,transparent 10% 90%,var(--g) 90% 100%) top/100% 2px,
+    linear-gradient(90deg,var(--g) 0 10%,transparent 10% 90%,var(--g) 90% 100%) bottom/100% 2px,
+    linear-gradient(0deg,var(--g) 0 10%,transparent 10% 90%,var(--g) 90% 100%) left/2px 100%,
+    linear-gradient(0deg,var(--g) 0 10%,transparent 10% 90%,var(--g) 90% 100%) right/2px 100%;
+  background-repeat:no-repeat;
+  filter:drop-shadow(0 0 8px rgba(167,243,208,.45));
+}
+.scan-cross{
+  position:absolute; inset:0;
+}
+.scan-cross::before, .scan-cross::after{
+  content:""; position:absolute; left:50%; top:50%;
+  background:#e5e7eb80; filter:drop-shadow(0 0 6px rgba(255,255,255,.35));
+}
+.scan-cross::before{ /* 垂直線 */
+  width:2px; height:52%; transform:translate(-50%,-50%);
+}
+.scan-cross::after{  /* 水平線 */
+  height:2px; width:52%; transform:translate(-50%,-50%);
+}
+.scan-hint{
+  position:absolute; left:0; right:0; bottom:10px; text-align:center; font-size:12px; color:#cbd5e1;
+  text-shadow:0 1px 2px rgba(0,0,0,.6);
+}
+.scan-foot{
+  padding:8px 12px; border-top:1px solid #2b3244; display:flex; align-items:center; justify-content:flex-end; gap:8px; background:#0f1117;
+}
+.scan-btn{ padding:8px 10px; border-radius:10px; border:1px solid #2b3244; background:#0f1117; color:#e5e7eb; font-weight:800; cursor:pointer; }
+.scan-btn.primary{ background:var(--btn-grad); color:#0b0c10; border:0; }
+
+/* ============================================================ */
 </style>
 </head>
 <body>
@@ -581,29 +652,36 @@ button.primary:hover{filter:saturate(1.08);}
   </div>
 </div>
 
+<!-- 🔳 掃描 QR 懸浮視窗（新增） -->
+<div id="scanBackdrop" class="backdrop">
+  <div class="scan-modal">
+    <div class="scan-head">
+      <div class="scan-title">掃描 QR / Scan QR</div>
+      <button id="scanClose" class="scan-close" aria-label="Close">×</button>
+    </div>
+    <div class="scan-body">
+      <video id="scanVideo" playsinline muted></video>
+      <div class="scan-overlay">
+        <div class="scan-frame">
+          <div class="scan-corners"></div>
+          <div class="scan-cross"></div>
+          <div class="scan-hint">將 QR 對準方框與十字線中央</div>
+        </div>
+      </div>
+    </div>
+    <div class="scan-foot">
+      <button id="scanPickImage" class="scan-btn">從圖片辨識</button>
+      <button id="scanRetry" class="scan-btn">重新連線</button>
+      <button id="scanDone" class="scan-btn primary">完成</button>
+    </div>
+  </div>
+</div>
+
 <!-- 隱藏的檔案 input 供「QR 圖片備援」 -->
 <input id="qrFile" type="file" accept="image/*" style="display:none" />
 
 <!-- Toast -->
 <div id="toast" class="toast"></div>
-
-<!-- === 新增：QR 掃描懸浮視窗（即時相機＋十字線＋方框） === -->
-<div id="qrBackdrop" class="backdrop">
-  <div class="modal" style="width:min(92vw,480px); background:#000; padding:0; overflow:hidden; position:relative;">
-    <button id="qrClose" class="modal-close" style="position:absolute; top:8px; right:8px; z-index:10;">×</button>
-    <video id="qrVideo" autoplay playsinline style="width:100%; height:auto; display:block;"></video>
-    <!-- 對準框 -->
-    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-      width:60%;aspect-ratio:1;border:3px solid rgba(255,255,255,.6);
-      border-radius:8px;box-shadow:0 0 20px rgba(255,255,255,.25) inset;">
-    </div>
-    <!-- 十字線 -->
-    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-      width:2px;height:60%;background:rgba(255,255,255,.85);"></div>
-    <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg);
-      width:2px;height:60%;background:rgba(255,255,255,.85);"></div>
-  </div>
-</div>
 
 <script>
 /* ===== (1) 設定：換成你的 GAS URL ===== */
@@ -690,7 +768,7 @@ function rebuildDatalists(){
   igs.forEach(v=>{ const o=document.createElement('option'); o.value=v; dlI.appendChild(o); });
 }
 
-/* ===== (5) 數量統計 ===== */
+/* ===== (5) 統計 ===== */
 function renderStats(){
   const total = state.rows.length;
   const paid = state.rows.filter(r=> norm(r.pay_status)==='paid').length;
@@ -727,7 +805,7 @@ function renderOnlyMatches(rows){
   const grid = $('grid'); grid.innerHTML = '';
   if(!rows || !rows.length){ headMsg('查無資料 / No results', false); return; }
   headMsg(`符合 ${rows.length} 筆 / matched records`, false);
-  rows.slice().sort((a,b)=> (a.country||'').localeCompare(b.country||'') || (a.name||'').localeCompare(b.name||'')))
+  rows.slice().sort((a,b)=> (a.country||'').localeCompare(b.country||'') || (a.name||'').localeCompare(b.name||''))
     .forEach(r=> grid.appendChild(renderPerson(r)));
 }
 
@@ -972,92 +1050,127 @@ function renderHiddenBar(){
 }
 $('ovUnhideAll')?.addEventListener('click', ()=>{ hiddenLeaders.clear(); renderOverview(); renderHiddenBar(); });
 
-/* ===== (9) 掃描 QR（即時相機 + 不支援時圖片備援） ===== */
+/* ===== (9) 掃描 QR（改為懸浮視窗 + 框/十字線） ===== */
 $('btnScan').addEventListener('click', startScan);
 
+const scan = {
+  stream: null,
+  detector: null,
+  raf: 0,
+  running: false
+};
+
 async function startScan(){
-  // 若不支援即時偵測，走備援：圖片上傳
+  openScanModal();
   if(!('BarcodeDetector' in window)){
-    showToast('裝置不支援即時掃描，改用圖片上傳');
-    const input = $('qrFile'); input.click(); return;
+    showToast('裝置不支援即時解析，改用圖片辨識');
+    pickImageForScan();
+    return;
   }
-
-  const backdrop = document.getElementById('qrBackdrop');
-  const video = document.getElementById('qrVideo');
-  const btnClose = document.getElementById('qrClose');
-  let stream = null;
-  let running = true;
-
-  const stop = ()=>{
-    running = false;
-    try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(_){}
-    backdrop.style.display = 'none';
-  };
-
-  // 關閉事件
-  btnClose.onclick = stop;
-  backdrop.onclick = (e)=>{ if(e.target===backdrop) stop(); };
-
   try{
-    backdrop.style.display='flex';
-    stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
-    video.srcObject = stream;
-    await video.play();
-
-    const detector = new BarcodeDetector({ formats:['qr_code'] });
-    const loop = async ()=>{
-      if(!running) return;
-      try{
-        const bmp = await createImageBitmap(video);
-        const codes = await detector.detect(bmp);
-        bmp.close();
-        if(codes && codes.length){
-          const raw = (codes[0].rawValue||'').trim();
-          if(/^\d+$/.test(raw)){  // 只接受數字（對應 item）
-            stop();
-            handleScanItem(raw);
-            return;
-          }
-        }
-      }catch(_){ /* 忽略單次失敗，持續掃描 */ }
-      requestAnimationFrame(loop);
-    };
-    loop();
-    showToast('掃描中… 請將 QR 對準框中央');
-  }catch(err){
-    console.warn('Camera open failed, fallback to file:', err);
-    backdrop.style.display='none';
-    const input = $('qrFile'); input.click();
+    scan.detector = new window.BarcodeDetector({ formats:['qr_code'] });
+  }catch(e){
+    console.warn(e);
+    showToast('裝置不支援即時解析，改用圖片辨識');
+    pickImageForScan();
+    return;
   }
+  try{
+    scan.stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
+  }catch(e){
+    console.warn('getUserMedia 失敗，改用圖片辨識', e);
+    showToast('無法啟用相機，改用圖片辨識');
+    pickImageForScan();
+    return;
+  }
+  const video = $('scanVideo');
+  video.srcObject = scan.stream;
+  await video.play();
+  scan.running = true;
+  loopDetect();
 }
 
-/* 圖片備援解析（保留原設計、非即時） */
-$('qrFile').addEventListener('change', async (e)=>{
-  const f = (e.target.files||[])[0];
-  if(!f){ showToast('未選取圖片 / No image selected'); return; }
-  try{
-    if(!('BarcodeDetector' in window)) throw new Error('no-detector');
-    const detector = new window.BarcodeDetector({ formats:['qr_code'] });
-    const bmp = await createImageBitmap(f);
-    const codes = await detector.detect(bmp);
-    bmp.close();
-    if(codes && codes.length){ handleScanItem((codes[0].rawValue||'').trim()); }
-    else{ showToast('解析失敗，請改用手動查找 / Parse failed, use manual search'); }
-  }catch(err){
-    console.warn(err); showToast('裝置不支援 QR 解析；請改用手動查找 / Not supported, use manual search');
-  } finally { e.target.value=''; }
-});
+async function loopDetect(){
+  const video = $('scanVideo');
+  const tick = async ()=>{
+    if(!scan.running) return;
+    try{
+      if(video.readyState >= 2){
+        const bitmap = await createImageBitmap(video);
+        const codes = await scan.detector.detect(bitmap);
+        bitmap.close();
+        if(codes && codes.length){
+          const raw = (codes[0].rawValue||'').trim();
+          await stopScan();
+          handleScanItem(raw);
+          return;
+        }
+      }
+    }catch(err){ console.warn('detect err', err); }
+    scan.raf = requestAnimationFrame(tick);
+  };
+  scan.raf = requestAnimationFrame(tick);
+}
 
-/* 掃到數字 → 以 item 比對；★一律打開付款彈窗（不再依 link 開頁） */
+async function stopScan(){
+  scan.running = false;
+  if(scan.raf){ cancelAnimationFrame(scan.raf); scan.raf = 0; }
+  try{
+    if(scan.stream){ scan.stream.getTracks().forEach(t=>t.stop()); }
+  }catch(_){}
+  scan.stream = null;
+}
+
+function openScanModal(){
+  $('scanBackdrop').style.display='flex';
+}
+async function closeScanModal(){
+  await stopScan();
+  $('scanBackdrop').style.display='none';
+}
+
+/* 懸浮視窗按鈕 */
+$('scanClose').addEventListener('click', closeScanModal);
+$('scanDone').addEventListener('click', closeScanModal);
+$('scanRetry').addEventListener('click', async ()=>{
+  await stopScan();
+  startScan();
+});
+$('scanPickImage').addEventListener('click', pickImageForScan);
+
+function pickImageForScan(){
+  const input = $('qrFile');
+  input.onchange = async (e)=>{
+    const f = (e.target.files||[])[0];
+    if(!f){ showToast('未選取圖片'); return; }
+    try{
+      if(!('BarcodeDetector' in window)) throw new Error('no-detector');
+      const detector = new window.BarcodeDetector({ formats:['qr_code'] });
+      const bmp = await createImageBitmap(f);
+      const codes = await detector.detect(bmp);
+      bmp.close();
+      if(codes && codes.length){
+        const raw = (codes[0].rawValue||'').trim();
+        await closeScanModal();
+        handleScanItem(raw);
+      }else{
+        showToast('解析失敗，請換張清楚的 QR 圖片');
+      }
+    }catch(err){
+      console.warn(err); showToast('裝置不支援 QR 解析；請改用手動查找');
+    } finally { input.value=''; }
+  };
+  input.click();
+}
+
 function handleScanItem(itemStr){
   if(!itemStr){ showToast('QR 無內容 / Empty QR'); return; }
   const row = state.indexByItem.get(String(itemStr));
   if(!row){ showToast('查無此 ITEM · 請確認 / Item not found'); return; }
-  // 需求：掃描到後直接進付款彈窗（未付款 / 已付款 + 送出）
   openPayModal(row);
 }
 
-/* ===== (10) 重新整理 ===== */
+/* ===== (10) 重新整理 & 故障診斷 ===== */
 $('btnRefresh').addEventListener('click', ()=> fetchRoster()); // 診斷按鈕暫不運作（已於 HTML 隱藏並 disabled）
 
 /* ===== (11) 已繳費/未繳費清單 ===== */
@@ -1097,7 +1210,7 @@ function openListModal(kind){
     listTitle.textContent = `未繳費名單 / Unpaid List（${rows.length}）`;
     listBody.innerHTML = buildUnpaidTable(rows);
   }
-  applyListWidths();
+  applyListWidths(); 
   initListSliders();        /* ⬅ 新增：開窗後初始化滑桿 */
   listBackdrop.style.display='flex';
 }
@@ -1349,9 +1462,9 @@ async function saveNotes(){
   const payloads = [];
   for(const tr of rows){
     const item = tr.getAttribute('data-item');
-    const confirmEl = tr.querySelector('input.note-checkbox');
-    const selectEl = tr.querySelector('select.note-select');
-    const inputEl = tr.querySelector('input.note-input');
+    const confirmEl = tr.querySelector('.note-checkbox');
+    const selectEl = tr.querySelector('.note-select');
+    const inputEl = tr.querySelector('.note-input');
     const confirmVal = !!(confirmEl && confirmEl.checked);
     const methodVal = selectEl ? selectEl.value : '';
     const noteVal = inputEl ? inputEl.value : '';
