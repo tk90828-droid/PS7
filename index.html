@@ -1095,7 +1095,7 @@ async function startScan(){
 
   // ② 再檢查是否支援 BarcodeDetector；不支援就走 jsQR 即時解析
   if (!('BarcodeDetector' in window)) {
-    showToast('此裝置不支援 BarcodeDetector，改用 jsQR');
+    showToast('waiting');
     scan.detector = null;
     scan.running = true;
     loopDetectJSQR();
