@@ -243,7 +243,7 @@ button.primary:hover{filter:saturate(1.08);}
 /* Save 按鈕（靠右） */
 .nf-save{ margin-left:auto; border:1px solid #2b3244; background:#0f1117; color:#e5e7eb; padding:4px 10px; border-radius:8px; cursor:pointer; font-weight:800; font-size:12px; }
 .nf-save[disabled]{opacity:.6; cursor:not-allowed;}
-.nf-save:hover{ border-image:var(--rainbow) 1; border-width:1px; border-style:solid; }
+.nf-save:hover{ border-image:var(--rainbow) 1; border-width:1; border-style:solid; }
 
 /* 第二行：進階（收合用） */
 .nf-adv{display:none; align-items:center; gap:10px; flex-wrap:wrap}
@@ -683,6 +683,9 @@ button.primary:hover{filter:saturate(1.08);}
 <!-- Toast -->
 <div id="toast" class="toast"></div>
 
+<!-- ✅ jsQR 後備：CDN（不影響 BarcodeDetector 路徑） -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
 <script>
 /* ===== (1) 設定：換成你的 GAS URL ===== */
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwtoGYXhk6qd0XuTOUvB6YZNNzdjXoGQEl7298-Pbtc-G-qNuoLM2kTknZZOQO9qZ_Y1A/exec';
@@ -1057,7 +1060,10 @@ const scan = {
   stream: null,
   detector: null,
   raf: 0,
-  running: false
+  running: false,
+  /* jsQR 後備畫布（延遲建立） */
+  cvs: null,
+  ctx: null
 };
 
 async function startScan(){
@@ -1087,24 +1093,26 @@ async function startScan(){
   video.srcObject = scan.stream;
   await video.play();
 
-  // ② 再檢查是否支援 BarcodeDetector
+  // ② 再檢查是否支援 BarcodeDetector；不支援就走 jsQR 即時解析
   if (!('BarcodeDetector' in window)) {
-    showToast('此裝置不支援即時解析，改用圖片辨識');
-    await closeScanModal();
-    pickImageForScan();
+    showToast('此裝置不支援 BarcodeDetector，改用 jsQR');
+    scan.detector = null;
+    scan.running = true;
+    loopDetectJSQR();
     return;
   }
   try{
     scan.detector = new window.BarcodeDetector({ formats:['qr_code'] });
   }catch(e){
     console.warn('BarcodeDetector 建立失敗', e);
-    showToast('裝置不支援即時解析，改用圖片辨識');
-    await closeScanModal();
-    pickImageForScan();
+    showToast('改用 jsQR 後備');
+    scan.detector = null;
+    scan.running = true;
+    loopDetectJSQR();
     return;
   }
 
-  // ③ 進入即時掃描
+  // ③ 進入即時掃描（BarcodeDetector）
   scan.running = true;
   loopDetect();
 }
@@ -1126,6 +1134,41 @@ async function loopDetect(){
         }
       }
     }catch(err){ console.warn('detect err', err); }
+    scan.raf = requestAnimationFrame(tick);
+  };
+  scan.raf = requestAnimationFrame(tick);
+}
+
+/* ✅ jsQR 即時掃描後備（不影響 BarcodeDetector 正常路徑） */
+function ensureJsqrcanvas(w, h){
+  if(!scan.cvs){
+    scan.cvs = document.createElement('canvas');
+    scan.ctx = scan.cvs.getContext('2d', { willReadFrequently: true });
+  }
+  if(scan.cvs.width !== w || scan.cvs.height !== h){
+    scan.cvs.width = w; scan.cvs.height = h;
+  }
+}
+function loopDetectJSQR(){
+  const video = $('scanVideo');
+  const tick = ()=>{
+    if(!scan.running) return;
+    try{
+      if(video.readyState >= 2 && video.videoWidth && video.videoHeight){
+        const w = video.videoWidth, h = video.videoHeight;
+        ensureJsqrcanvas(w, h);
+        scan.ctx.drawImage(video, 0, 0, w, h);
+        const img = scan.ctx.getImageData(0, 0, w, h);
+        if (window.jsQR){
+          const code = window.jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
+          if(code && code.data){
+            const raw = String(code.data).trim();
+            closeScanModal().then(()=> handleScanItem(raw));
+            return;
+          }
+        }
+      }
+    }catch(err){ console.warn('jsQR detect err', err); }
     scan.raf = requestAnimationFrame(tick);
   };
   scan.raf = requestAnimationFrame(tick);
@@ -1163,13 +1206,41 @@ function pickImageForScan(){
     const f = (e.target.files||[])[0];
     if(!f){ showToast('未選取圖片'); return; }
     try{
-      if(!('BarcodeDetector' in window)) throw new Error('no-detector');
-      const detector = new window.BarcodeDetector({ formats:['qr_code'] });
-      const bmp = await createImageBitmap(f);
-      const codes = await detector.detect(bmp);
-      bmp.close();
-      if(codes && codes.length){
-        const raw = (codes[0].rawValue||'').trim();
+      // 先嘗試 BarcodeDetector（若支援）
+      let raw = '';
+      if ('BarcodeDetector' in window){
+        try{
+          const detector = new window.BarcodeDetector({ formats:['qr_code'] });
+          const bmp = await createImageBitmap(f);
+          // 需繪製到 canvas 才能被 detector.detect? 直接 ImageBitmap 也可，但保險起見保留原法
+          const off = document.createElement('canvas');
+          off.width = bmp.width; off.height = bmp.height;
+          const octx = off.getContext('2d', { willReadFrequently: true });
+          octx.drawImage(bmp, 0, 0);
+          const codes = await detector.detect(bmp);
+          bmp.close();
+          if(codes && codes.length) raw = (codes[0].rawValue||'').trim();
+        }catch(err){ /* 失敗則走 jsQR */ }
+      }
+      // 若 BD 不可用或沒讀到，退到 jsQR
+      if(!raw && window.jsQR){
+        const url = URL.createObjectURL(f);
+        const img = new Image();
+        await new Promise((resolve, reject)=>{
+          img.onload = resolve; img.onerror = reject; img.src = url;
+        });
+        const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        if(w && h){
+          ensureJsqrcanvas(w, h);
+          scan.ctx.drawImage(img, 0, 0, w, h);
+          const data = scan.ctx.getImageData(0, 0, w, h);
+          const code = window.jsQR(data.data, w, h, { inversionAttempts: 'dontInvert' });
+          if(code && code.data) raw = String(code.data).trim();
+        }
+        URL.revokeObjectURL(url);
+      }
+
+      if(raw){
         await closeScanModal();
         handleScanItem(raw);
       }else{
