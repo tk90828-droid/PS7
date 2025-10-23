@@ -1,4 +1,4 @@
-<!doctype html>      
+<!doctype html>     
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8" />
@@ -172,7 +172,7 @@ button.primary:hover{filter:saturate(1.08);}
   width:12px;height:12px;border-radius:999px;background:conic-gradient(#EF4444,#F59E0B,#FACC15,#22C55E,#3B82F6,#8B5CF6,#EF4444);
   box-shadow:0 0 10px rgba(255,255,255,.08) inset, 0 2px 8px rgba(0,0,0,.35);
 }
-.ov-toggle:hover{border-image:var(--rainbow) 1;border-width:1;border-style:solid}
+.ov-toggle:hover{border-image:var(--rainbow) 1;border-width:1px;border-style:solid}
 
 /* 個別隱藏列（六色彩虹圓點恢復） */
 #ovHiddenBar{display:none;margin-top:8px;padding:8px 10px;border-top:1px solid #2b3244;background:#0f1117;border-radius:12px}
@@ -348,6 +348,7 @@ button.primary:hover{filter:saturate(1.08);}
 
 /* ====== 清單（Paid/Unpaid）欄寬可調（滑桿） ====== */
 .table-list{table-layout:fixed; width:100%}
+/* 更緊湊：清單表格字小、內距小，能顯示更多筆 */
 .table-list{font-size:12px}
 .table-list thead th{padding:6px 8px}
 .table-list tbody td{padding:4px 6px}
@@ -415,7 +416,7 @@ button.primary:hover{filter:saturate(1.08);}
 .scan-corners::after{
   content:""; position:absolute; inset:0; border-radius:18px;
   border:2px solid transparent;
-  /* 用線性漸层只畫四角 */
+  /* 用線性漸層只畫四角 */
   --g: #a7f3d0;
   background:
     linear-gradient(90deg,var(--g) 0 10%,transparent 10% 90%,var(--g) 90% 100%) top/100% 2px,
@@ -563,8 +564,8 @@ button.primary:hover{filter:saturate(1.08);}
       </div>
       <div class="rb"></div>
 
-      <!-- ⬇ 更緊湊的三條滑桿；⚠ 預設收合 -->
-      <div id="listCtrls" style="display:none">
+      <!-- ⬇ 更緊湊的三條滑桿，可收合 -->
+      <div id="listCtrls">
         <div class="wrow">
           <label for="lNameRange">name</label>
           <input id="lNameRange" type="range" min="40" max="240" step="10">
@@ -603,17 +604,11 @@ button.primary:hover{filter:saturate(1.08);}
 
       <!-- 篩選/搜尋列（新版排版） -->
       <div class="note-filters">
-        <!-- 第一行：搜尋/下拉篩選/展開/儲存（Save 置右） -->
+        <!-- 第一行：搜尋/未繳費/展開/儲存（Save 置右） -->
         <div class="nf-row1">
           <input type="text" id="noteSearchName" placeholder="搜尋 name">
           <input type="text" id="noteSearchIg" placeholder="搜尋 ig">
-          <!-- ⬇️ 改為下拉式選單（取代原本的 只看未繳費 checkbox） -->
-          <select id="noteFilterMode" class="note-select" title="篩選">
-            <option value="">全部</option>
-            <option value="unpaid">只看未繳費</option>
-            <option value="paid">只看已繳費</option>
-            <option value="confirmed">只看已確認</option>
-          </select>
+          <label class="nf-check"><input type="checkbox" id="noteOnlyUnpaid"> 只看未繳費</label>
           <button id="noteToggle" class="nf-tri" aria-expanded="false" title="更多設定"></button>
           <button id="noteSave" class="nf-save" title="儲存 Note">Save</button>
         </div>
@@ -813,7 +808,7 @@ function renderOnlyMatches(rows){
   const grid = $('grid'); grid.innerHTML = '';
   if(!rows || !rows.length){ headMsg('查無資料 / No results', false); return; }
   headMsg(`符合 ${rows.length} 筆 / matched records`, false);
-  rows.slice().sort((a,b)=> (a.country||'').localeCompare(b.country||'') || (a.name||'').localeCompare(b.name||''))}
+  rows.slice().sort((a,b)=> (a.country||'').localeCompare(b.country||'') || (a.name||'').localeCompare(b.name||''))
     .forEach(r=> grid.appendChild(renderPerson(r)));
 }
 
@@ -1217,6 +1212,7 @@ function pickImageForScan(){
         try{
           const detector = new window.BarcodeDetector({ formats:['qr_code'] });
           const bmp = await createImageBitmap(f);
+          // 需繪製到 canvas 才能被 detector.detect? 直接 ImageBitmap 也可，但保險起見保留原法
           const off = document.createElement('canvas');
           off.width = bmp.width; off.height = bmp.height;
           const octx = off.getContext('2d', { willReadFrequently: true });
@@ -1397,8 +1393,7 @@ $('noteClose').addEventListener('click', ()=> noteBackdrop.style.display='none')
 $('noteCloseX').addEventListener('click', ()=> noteBackdrop.style.display='none'); /* 右上角叉叉 */
 noteBackdrop.addEventListener('click', (e)=>{ if(e.target===noteBackdrop) noteBackdrop.style.display='none'; });
 
-/* ⬇️ 改用下拉式選單監聽 */
-$('noteFilterMode').addEventListener('change', ()=>{ renderNoteTable(); });
+$('noteOnlyUnpaid').addEventListener('change', ()=>{ renderNoteTable(); });
 $('noteSearchName').addEventListener('input', ()=>{ renderNoteTable(); });
 $('noteSearchIg').addEventListener('input', ()=>{ renderNoteTable(); });
 
@@ -1463,14 +1458,12 @@ function renderNoteTable(){
     updateNoteConfirmCount();
     return;
   }
-  const mode = $('noteFilterMode').value; // '', 'unpaid', 'paid', 'confirmed'
+  const onlyUnpaid = $('noteOnlyUnpaid').checked;
   const qn = norm($('noteSearchName').value);
   const qi = norm($('noteSearchIg').value);
 
   let rows = state.rows.slice();
-  if(mode === 'unpaid') rows = rows.filter(r=> norm(r.pay_status)!=='paid');
-  if(mode === 'paid') rows = rows.filter(r=> norm(r.pay_status)==='paid');
-  if(mode === 'confirmed') rows = rows.filter(r=> !!r.confirm);
+  if(onlyUnpaid) rows = rows.filter(r=> norm(r.pay_status)!=='paid');
   if(qn) rows = rows.filter(r=> norm(r.name||'').includes(qn));
   if(qi) rows = rows.filter(r=> norm(r.ig||'').includes(qi));
 
@@ -1619,7 +1612,7 @@ async function saveNotes(){
 window.addEventListener('error', (e)=>{ try{ console.error('[GlobalError]', e.message, e.filename, e.lineno, e.colno, e.error); }catch(_){}
   try{ showToast('發生錯誤：' + (e.message || 'Script error')); }catch(_){} });
 window.addEventListener('unhandledrejection', (e)=>{ try{ console.error('[UnhandledRejection]', e.reason); }catch(_){}
-  try{ showToast('發生錯誤（Promise）：' + (e.reason && e.reason.message ? e.reason.message : '')); }catch(_){} 
+  try{ showToast('發生錯誤（Promise）：' + (e.reason && e.reason.message ? e.reason.message : '')); }catch(_){}
 
 });
 
